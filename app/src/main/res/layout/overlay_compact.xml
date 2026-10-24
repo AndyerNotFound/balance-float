@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_pill"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="9dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="9dp">
+
+    <View
+        android:id="@+id/dotPill"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:background="@drawable/bg_dot_glow" />
+
+    <TextView
+        android:id="@+id/tvPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="3dp"
+        android:fontFamily="sans-serif-medium"
+        android:text="¥ --"
+        android:textColor="@color/text"
+        android:textSize="15sp" />
+
+    <ProgressBar
+        android:id="@+id/pbPill"
+        style="?android:attr/progressBarStyleSmall"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="3dp"
+        android:indeterminateTint="@color/text_sub"
+        android:visibility="gone" />
+</LinearLayout>

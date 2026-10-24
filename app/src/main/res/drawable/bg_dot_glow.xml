@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 状态灯：外圈光晕 + 实心核心。整体会被 setTint 染成状态色，
+     光晕的 alpha 渐变保留，所以颜色越亮外圈越明显。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:centerColor="#66FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:gradientRadius="50%p"
+                android:startColor="#F2FFFFFF"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <item
+        android:bottom="5dp"
+        android:left="5dp"
+        android:right="5dp"
+        android:top="5dp">
+        <shape android:shape="oval">
+            <solid android:color="#FFFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

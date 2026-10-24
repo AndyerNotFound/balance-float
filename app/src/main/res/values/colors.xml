@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0E1116</color>
+    <color name="card">#161B24</color>
+    <color name="card_stroke">#1FFFFFFF</color>
+    <color name="text">#E8EEF7</color>
+    <color name="text_sub">#94A1B2</color>
+    <color name="text_muted">#6B7789</color>
+    <color name="accent">#6C9BFF</color>
+    <color name="green">#4BE39D</color>
+    <color name="amber">#FFB020</color>
+    <color name="red">#FF6A6E</color>
+    <color name="icon_bg">#10151E</color>
+
+    <!-- Material You 暗色兜底（Android 12+ 会被壁纸取色覆盖） -->
+    <color name="md_primary">#A9C7FF</color>
+    <color name="md_on_primary">#00315F</color>
+    <color name="md_primary_container">#23466F</color>
+    <color name="md_on_primary_container">#D6E3FF</color>
+    <color name="md_secondary">#8FD3C7</color>
+    <color name="md_on_secondary">#003731</color>
+    <color name="md_surface">#101318</color>
+    <color name="md_on_surface">#E3E2E6</color>
+    <color name="md_surface_container">#1A1D24</color>
+    <color name="md_surface_container_high">#22262F</color>
+    <color name="md_on_surface_variant">#C3C6CF</color>
+    <color name="md_outline">#8D919B</color>
+    <color name="md_outline_variant">#3A3F49</color>
+    <color name="md_error">#FFB4AB</color>
+</resources>
