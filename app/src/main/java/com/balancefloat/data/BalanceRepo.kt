@@ -1,5 +1,6 @@
 package com.balancefloat.data
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONArray
@@ -23,6 +24,14 @@ import javax.net.ssl.SSLException
  * 单例：Activity 和悬浮窗 Service 共用同一份数据。
  */
 object BalanceRepo {
+
+    @Volatile
+    private var appCtx: Context? = null
+
+    /** App 启动时调一次：续期后的 token 要写回 Store。 */
+    fun init(ctx: Context) {
+        appCtx = ctx.applicationContext
+    }
 
     data class Result(
         val id: String,
@@ -257,7 +266,16 @@ object BalanceRepo {
 
     // ---------- 订阅额度 ----------
 
-    private fun fetchQuota(p: Provider): Result {
+    private fun fetchQuota(p0: Provider): Result {
+        if (p0.kind == Kind.GEMINI_QUOTA) return fetchGemini(p0)
+        var p = p0
+        // Codex 的 access_token 只有 1 小时：临期先续一次，省得先吃一个 401
+        if (p.kind == Kind.CODEX_QUOTA && p.refreshToken.isNotBlank() &&
+            (p.tokenExpiresAt == 0L || p.tokenExpiresAt - System.currentTimeMillis() < 120_000L)
+        ) {
+            refreshCodex(p)?.let { p = it }
+        }
+
         var url = p.resolvedUrl()
         if (p.kind == Kind.CLAUDE_QUOTA && p.orgId.isBlank()) {
             val org = discoverClaudeOrg(p)
@@ -266,12 +284,19 @@ object BalanceRepo {
         }
         if (url.isBlank()) return fail(p, "未填写接口地址")
 
-        val extra = if (p.kind == Kind.CODEX_QUOTA) {
-            mapOf("ChatGPT-Account-Id" to p.accountId)
-        } else emptyMap()
-
-        val r = httpGet(url, p, extra)
-        if (r.code == 401) return fail(p, "凭据失效（401），重新取一次 token")
+        var r = httpGet(url, p, codexHeaders(p))
+        if (r.code == 401 && p.kind == Kind.CODEX_QUOTA && p.refreshToken.isNotBlank()) {
+            // token 提前失效（改密、换设备、时钟偏差）：再续一次
+            val np = refreshCodex(p)
+            if (np != null) {
+                p = np
+                r = httpGet(url, p, codexHeaders(p))
+            }
+        }
+        if (r.code == 401) {
+            return fail(p, if (p.kind == Kind.CODEX_QUOTA) "凭据失效（401），重新登录一次"
+            else "凭据失效（401），重新取一次 token")
+        }
         if (r.code == 403) return fail(p, "无权限（403）")
         if (r.code == 429) return fail(p, "被限流（429），稍后再试")
         if (r.code !in 200..299) return fail(p, "HTTP ${r.code}" + errorDetail(r.body))
@@ -286,6 +311,66 @@ object BalanceRepo {
             Kind.CLAUDE_QUOTA -> parseClaude(p, json)
             else -> parseCustomQuota(p, json)
         }
+    }
+
+    private fun codexHeaders(p: Provider): Map<String, String> =
+        if (p.kind == Kind.CODEX_QUOTA && p.accountId.isNotBlank())
+            mapOf("ChatGPT-Account-Id" to p.accountId)
+        else emptyMap()
+
+    /** 用 refresh_token 换新的 access_token，顺手写回 Store；失败返回 null。 */
+    private fun refreshCodex(p: Provider): Provider? {
+        val t = CodexOAuth.refresh(p.refreshToken) ?: return null
+        val np = p.copy(
+            apiKey = t.access,
+            refreshToken = t.refresh.ifBlank { p.refreshToken },
+            tokenExpiresAt = t.expiresAt,
+            accountId = t.accountId.ifBlank { p.accountId }
+        )
+        appCtx?.let { runCatching { Store(it).upsert(np) } }
+        return np
+    }
+
+    /** Gemini 订阅：token 续期 + Code Assist 配额。 */
+    private fun fetchGemini(p0: Provider): Result {
+        var p = p0
+        if (p.apiKey.isBlank()) return fail(p, "未登录 Google 账号")
+
+        if (p.refreshToken.isNotBlank() &&
+            (p.tokenExpiresAt == 0L || p.tokenExpiresAt - System.currentTimeMillis() < 120_000L)
+        ) {
+            refreshGemini(p)?.let { p = it }
+        }
+
+        var q = GeminiOAuth.fetchQuota(p.apiKey, p.accountId)
+        if (q.isFailure && p.refreshToken.isNotBlank()) {
+            val np = refreshGemini(p)
+            if (np != null) {
+                p = np
+                q = GeminiOAuth.fetchQuota(np.apiKey, np.accountId)
+            }
+        }
+
+        val quota = q.getOrElse { return fail(p, it.message ?: "查询失败") }
+        if (quota.project.isNotBlank() && quota.project != p.accountId) {
+            val np = p.copy(accountId = quota.project)
+            appCtx?.let { runCatching { Store(it).upsert(np) } }
+        }
+        return Result(
+            p.id, true, null, "", "",
+            System.currentTimeMillis(), quota.windows, quota.tier
+        )
+    }
+
+    private fun refreshGemini(p: Provider): Provider? {
+        val t = GeminiOAuth.refresh(p.refreshToken) ?: return null
+        val np = p.copy(
+            apiKey = t.access,
+            refreshToken = t.refresh.ifBlank { p.refreshToken },
+            tokenExpiresAt = t.expiresAt
+        )
+        appCtx?.let { runCatching { Store(it).upsert(np) } }
+        return np
     }
 
     /** Claude 网页版：用 sessionKey 列一次组织，拿 uuid。 */

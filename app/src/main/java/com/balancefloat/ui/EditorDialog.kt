@@ -254,6 +254,7 @@ object EditorDialog {
 
         fun keyLabelFor(k: Kind): String = when (k) {
             Kind.CODEX_QUOTA -> "OAuth Access Token"
+            Kind.GEMINI_QUOTA -> "Google Access Token"
             Kind.CLAUDE_QUOTA -> "sessionKey"
             Kind.OPENCODE_GO -> "auth cookie"
             Kind.CUSTOM_QUOTA -> "Token（接口免认证可留空）"
@@ -272,6 +273,7 @@ object EditorDialog {
             keyField.til.hint = keyLabelFor(k)
             keyField.input.hint = when (k) {
                 Kind.CODEX_QUOTA -> "tokens.access_token"
+                Kind.GEMINI_QUOTA -> "设置页登录后自动填"
                 Kind.CLAUDE_QUOTA -> "sessionKey=… 的值"
                 Kind.OPENCODE_GO -> "Fe26.2**…"
                 else -> "sk-…"
@@ -359,6 +361,8 @@ object EditorDialog {
                 kind = kind,
                 name = name,
                 apiKey = key,
+                refreshToken = existing?.refreshToken ?: "",
+                tokenExpiresAt = existing?.tokenExpiresAt ?: 0L,
                 endpoint = url,
                 baseUrl = "",
                 jsonPath = if (quota) "" else path,

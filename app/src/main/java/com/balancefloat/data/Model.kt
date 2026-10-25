@@ -26,7 +26,8 @@ enum class Kind(
     CODEX_QUOTA("codex_quota", "Codex / ChatGPT 订阅", "5h + 周额度（OAuth token）", Mode.QUOTA),
     CLAUDE_QUOTA("claude_quota", "Claude 订阅", "网页 sessionKey", Mode.QUOTA),
     CUSTOM_QUOTA("custom_quota", "自定义额度", "任意 URL + JSON 路径", Mode.QUOTA),
-    OPENCODE_GO("opencode_go", "OpenCode Go", "网页 workspace + auth cookie", Mode.QUOTA);
+    OPENCODE_GO("opencode_go", "OpenCode Go", "网页 workspace + auth cookie", Mode.QUOTA),
+    GEMINI_QUOTA("gemini_quota", "Gemini 订阅", "Google 账号登录 / Code Assist 配额", Mode.QUOTA);
 
     companion object {
         fun of(id: String?): Kind = values().firstOrNull { it.id == id } ?: CUSTOM
@@ -50,6 +51,10 @@ data class Provider(
     val kind: Kind = Kind.CUSTOM,
     val name: String = "",
     val apiKey: String = "",
+    /** Codex OAuth 的 refresh_token（登录后自动填，1 小时换一次 access_token） */
+    val refreshToken: String = "",
+    /** access_token 过期时间（epoch 毫秒）；0 = 未知 */
+    val tokenExpiresAt: Long = 0L,
     /** 完整 URL，或相对路径（用 baseUrl 拼接）；可用 {org} 占位 */
     val endpoint: String = "",
     val baseUrl: String = "",
@@ -145,6 +150,11 @@ data class Provider(
                     kind = kind, name = "OpenCode Go",
                     endpoint = "https://opencode.ai/workspace/{ws}/go",
                     jsonPath = "", unit = "", auth = "cookie", cookieName = "auth"
+                )
+                Kind.GEMINI_QUOTA -> Provider(
+                    kind = kind, name = "Gemini",
+                    endpoint = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
+                    jsonPath = "", unit = "", auth = "bearer"
                 )
                 Kind.CUSTOM_QUOTA -> Provider(
                     kind = kind, name = "额度",

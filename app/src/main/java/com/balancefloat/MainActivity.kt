@@ -21,22 +21,28 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.balancefloat.data.BalanceRepo
+import com.balancefloat.data.CodexOAuth
+import com.balancefloat.data.GeminiOAuth
+import com.balancefloat.data.Kind
 import com.balancefloat.data.Money
 import com.balancefloat.data.Provider
 import com.balancefloat.data.QuotaWindow
 import com.balancefloat.data.Store
 import com.balancefloat.ui.EditorDialog
 import com.balancefloat.ui.Fmt
+import com.balancefloat.ui.LoginActivity
 import com.balancefloat.ui.OverlayService
 import com.balancefloat.ui.Ui
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.materialswitch.MaterialSwitch
+import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
@@ -58,6 +64,31 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rowBlur: View
 
     private var pendingOverlayStart = false
+
+    private lateinit var tvLoginCodex: TextView
+    private lateinit var tvLoginClaude: TextView
+    private lateinit var tvLoginOpenCode: TextView
+    private lateinit var tvLoginGemini: TextView
+
+    /** 网页登录回来时认领是哪一家 */
+    private var pendingLogin = ""
+
+    private val loginLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+            val kind = pendingLogin
+            pendingLogin = ""
+            if (res.resultCode != RESULT_OK) return@registerForActivityResult
+            val cookie = res.data?.getStringExtra(LoginActivity.RESULT_COOKIE).orEmpty()
+            val ws = res.data?.getStringExtra(LoginActivity.RESULT_WORKSPACE).orEmpty()
+            if (cookie.isBlank()) {
+                toast("没拿到凭据")
+                return@registerForActivityResult
+            }
+            when (kind) {
+                LoginActivity.KIND_CLAUDE -> saveCookieLogin(Kind.CLAUDE_QUOTA, cookie, "")
+                LoginActivity.KIND_OPENCODE -> saveCookieLogin(Kind.OPENCODE_GO, cookie, ws)
+            }
+        }
 
     private val repoListener: () -> Unit = { render() }
 
@@ -127,6 +158,22 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.rowOverlaySize).setOnClickListener { showOverlaySizeDialog() }
         findViewById<View>(R.id.rowOverlayColor).setOnClickListener { showOverlayColorDialog() }
 
+        tvLoginCodex = findViewById(R.id.tvLoginCodex)
+        tvLoginClaude = findViewById(R.id.tvLoginClaude)
+        tvLoginOpenCode = findViewById(R.id.tvLoginOpenCode)
+        tvLoginGemini = findViewById(R.id.tvLoginGemini)
+        findViewById<View>(R.id.rowLoginCodex).setOnClickListener { loginCodex() }
+        findViewById<View>(R.id.rowLoginClaude).setOnClickListener {
+            pendingLogin = LoginActivity.KIND_CLAUDE
+            loginLauncher.launch(LoginActivity.intent(this, LoginActivity.KIND_CLAUDE))
+        }
+        findViewById<View>(R.id.rowLoginOpenCode).setOnClickListener {
+            pendingLogin = LoginActivity.KIND_OPENCODE
+            loginLauncher.launch(LoginActivity.intent(this, LoginActivity.KIND_OPENCODE))
+        }
+        findViewById<View>(R.id.rowLoginGemini).setOnClickListener { loginGemini() }
+
+        refreshLoginLabels()
         applyBlobBlur()
 
         // 仅 debug：`am start --ez open_editor true --es provider_id <id>` 便于无头验证编辑器
@@ -143,6 +190,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         BalanceRepo.addListener(repoListener)
         render()
+        if (this::tvLoginCodex.isInitialized) refreshLoginLabels()
 
         if (pendingOverlayStart && Settings.canDrawOverlays(this)) {
             pendingOverlayStart = false
@@ -527,6 +575,130 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- 悬浮窗外观 ----------
+
+    // ---------- 账号登录 ----------
+
+    /** Codex：系统浏览器走 OAuth，本机 1455 收回调。 */
+    private fun loginCodex() {
+        toast("已打开浏览器，登录后切回 App")
+        thread {
+            val r = CodexOAuth.login { url ->
+                runOnUiThread {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        .onFailure { toast("没有可用浏览器") }
+                }
+            }
+            runOnUiThread {
+                r.onSuccess { t ->
+                    val base = store.providers().firstOrNull { it.kind == Kind.CODEX_QUOTA }
+                        ?: Provider.preset(Kind.CODEX_QUOTA)
+                    store.upsert(
+                        base.copy(
+                            apiKey = t.access,
+                            refreshToken = t.refresh,
+                            tokenExpiresAt = t.expiresAt,
+                            accountId = t.accountId.ifBlank { base.accountId },
+                            enabled = true
+                        )
+                    )
+                    afterLogin("Codex" + if (t.plan.isNotBlank()) "（${t.plan}）" else "")
+                }.onFailure { e ->
+                    toast("登录失败：" + (e.message ?: "未知错误"))
+                }
+            }
+        }
+    }
+
+    /** Gemini：Google OAuth，随机 loopback 端口收回调。 */
+    private fun loginGemini() {
+        toast("已打开浏览器，登录后切回 App")
+        thread {
+            val r = GeminiOAuth.login { url ->
+                runOnUiThread {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        .onFailure { toast("没有可用浏览器") }
+                }
+            }
+            runOnUiThread {
+                r.onSuccess { t ->
+                    val base = store.providers().firstOrNull { it.kind == Kind.GEMINI_QUOTA }
+                        ?: Provider.preset(Kind.GEMINI_QUOTA)
+                    store.upsert(
+                        base.copy(
+                            apiKey = t.access,
+                            refreshToken = t.refresh,
+                            tokenExpiresAt = t.expiresAt,
+                            enabled = true
+                        )
+                    )
+                    afterLogin("Gemini")
+                }.onFailure { e ->
+                    toast("登录失败：" + (e.message ?: "未知错误"))
+                }
+            }
+        }
+    }
+
+    /** Claude / OpenCode：WebView 登录回来，写进对应渠道。 */
+    private fun saveCookieLogin(kind: Kind, cookie: String, ws: String) {
+        val base = store.providers().firstOrNull { it.kind == kind } ?: Provider.preset(kind)
+        store.upsert(
+            base.copy(
+                apiKey = cookie,
+                workspaceId = if (ws.isNotBlank()) ws else base.workspaceId,
+                enabled = true
+            )
+        )
+        afterLogin(kind.label)
+    }
+
+    private fun afterLogin(label: String) {
+        refreshLoginLabels()
+        toast("$label 已登录")
+        BalanceRepo.refreshAll(store.providers()) { render() }
+        OverlayService.reload(this)
+    }
+
+    private fun refreshLoginLabels() {
+        val ps = store.providers()
+
+        val codex = ps.firstOrNull { it.kind == Kind.CODEX_QUOTA }
+        tvLoginCodex.text = if (codex == null || codex.apiKey.isBlank()) {
+            "浏览器授权 · token 自动续期"
+        } else {
+            val left = (codex.tokenExpiresAt - System.currentTimeMillis()).coerceAtLeast(0)
+            "已登录" + if (left > 0) " · 剩 " + leftLabel(left) else ""
+        }
+
+        val claude = ps.firstOrNull { it.kind == Kind.CLAUDE_QUOTA }
+        tvLoginClaude.text = if (claude == null || claude.apiKey.isBlank()) {
+            "网页登录 · 自动取 sessionKey"
+        } else {
+            "已登录 · sessionKey 已保存"
+        }
+
+        val oc = ps.firstOrNull { it.kind == Kind.OPENCODE_GO }
+        tvLoginOpenCode.text = if (oc == null || oc.apiKey.isBlank()) {
+            "网页登录 · 自动取 auth cookie"
+        } else if (oc.workspaceId.isBlank()) {
+            "已登录 · 还缺 workspace id"
+        } else {
+            "已登录 · " + oc.workspaceId.take(11) + "…"
+        }
+
+        val gm = ps.firstOrNull { it.kind == Kind.GEMINI_QUOTA }
+        tvLoginGemini.text = if (gm == null || gm.apiKey.isBlank()) {
+            "Google 授权 · Code Assist 配额"
+        } else {
+            val left = (gm.tokenExpiresAt - System.currentTimeMillis()).coerceAtLeast(0)
+            "已登录" + if (left > 0) " · 剩 " + leftLabel(left) else ""
+        }
+    }
+
+    private fun leftLabel(ms: Long): String {
+        val m = (ms / 60_000).coerceAtLeast(0)
+        return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
+    }
 
     private fun showOverlaySizeDialog() {
         val box = LinearLayout(this).apply {

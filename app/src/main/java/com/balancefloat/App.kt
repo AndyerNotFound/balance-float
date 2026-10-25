@@ -1,6 +1,7 @@
 package com.balancefloat
 
 import android.app.Application
+import com.balancefloat.data.BalanceRepo
 import com.google.android.material.color.DynamicColors
 
 class App : Application() {
@@ -8,5 +9,6 @@ class App : Application() {
         super.onCreate()
         // Android 12+ 跟随壁纸取色（Material You）
         DynamicColors.applyToActivitiesIfAvailable(this)
+        BalanceRepo.init(this)
     }
 }

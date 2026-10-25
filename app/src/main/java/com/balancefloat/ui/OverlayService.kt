@@ -48,7 +48,7 @@ import kotlin.math.roundToInt
 
 /**
  * 悬浮窗：胶囊（合计）↔ 明细卡片。
- * 拖动移位，单击刷新，双击切换形态，长按打开 App。
+ * 拖动移位，单击切下一条渠道，双击刷新，长按展开/收起。打开 App 走详情卡按钮。
  * 前台服务保证锁屏/切后台后仍按间隔刷新。
  */
 class OverlayService : Service() {
@@ -112,16 +112,18 @@ class OverlayService : Service() {
     private var dragging = false
     private var lastTapAt = 0L
 
+    // 长按 = 展开 / 收起
     private val longPressRunnable = Runnable {
-        lastTapAt = 0
+        lastTapAt = 0L
+        ui.removeCallbacks(singleTapRunnable) // 先点一下再长按，不要多滚一格
         dragging = true // 吞掉抬手时的点击
         root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        refreshNow()
+        toggleMode()
     }
 
     private val singleTapRunnable = Runnable {
         lastTapAt = 0L
-        // 详情卡片里单击不做事，避免误触；刷新走长按或按钮
+        // 详情卡片里单击不做事，避免误触；刷新走双击或按钮
         if (!expanded) advancePill()
     }
 
@@ -331,7 +333,7 @@ class OverlayService : Service() {
 
         val hint = v.findViewById<TextView>(R.id.tvHint)
         fun syncHint() {
-            hint.text = if (store.lockPosition) "已锁定 · 长按刷新" else "长按刷新 · 双击收起"
+            hint.text = if (store.lockPosition) "已锁定 · 双击刷新" else "双击刷新 · 长按展开"
         }
         syncHint()
 
@@ -531,7 +533,7 @@ class OverlayService : Service() {
                 startY = params.y
                 dragging = false
                 ui.removeCallbacks(longPressRunnable)
-                ui.postDelayed(longPressRunnable, 520)
+                ui.postDelayed(longPressRunnable, 400)
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -574,7 +576,7 @@ class OverlayService : Service() {
         if (now - lastTapAt in 1..260) {
             lastTapAt = 0L
             ui.removeCallbacks(singleTapRunnable)
-            toggleMode()
+            refreshNow() // 双击 = 刷新
         } else {
             lastTapAt = now
             ui.postDelayed(singleTapRunnable, 280)

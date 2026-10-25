@@ -43,6 +43,8 @@ class Store(context: Context) {
         put("kind", p.kind.id)
         put("name", p.name)
         put("key", Crypto.encrypt(p.apiKey))
+        put("refreshToken", Crypto.encrypt(p.refreshToken))
+        put("tokenExpiresAt", p.tokenExpiresAt)
         put("endpoint", p.endpoint)
         put("baseUrl", p.baseUrl)
         put("jsonPath", p.jsonPath)
@@ -63,6 +65,8 @@ class Store(context: Context) {
         kind = Kind.of(o.optString("kind")),
         name = o.optString("name"),
         apiKey = Crypto.decrypt(o.optString("key")),
+        refreshToken = Crypto.decrypt(o.optString("refreshToken")),
+        tokenExpiresAt = o.optLong("tokenExpiresAt", 0L),
         endpoint = o.optString("endpoint"),
         baseUrl = o.optString("baseUrl"),
         jsonPath = o.optString("jsonPath"),
